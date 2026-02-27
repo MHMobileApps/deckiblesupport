@@ -116,7 +116,17 @@ export default function TicketDashboard() {
                 <p className="text-sm">Requester: {details.local?.requesterName || 'Unknown'} ({details.local?.requesterEmail || 'Unknown'})</p>
                 <p className="text-sm">Language: <span className="px-2 py-1 bg-indigo-100 rounded">{details.draft?.language || details.local?.language || 'Unknown'}</span></p>
               </div>
-              <button className="bg-slate-200 px-3 py-1 rounded" onClick={() => fetch(`/api/tickets/${selected}/sync`, { method: 'POST' }).then(() => selected && loadDetail(selected))}>Refresh</button>
+              <button
+                className="bg-slate-200 px-3 py-1 rounded"
+                onClick={async () => {
+                  await fetch(`/api/tickets/${selected}/sync`, { method: 'POST' });
+                  if (selected) {
+                    await loadDetail(selected);
+                  }
+                }}
+              >
+                Refresh
+              </button>
             </div>
 
             <div className="mt-3 p-3 bg-white rounded border">
