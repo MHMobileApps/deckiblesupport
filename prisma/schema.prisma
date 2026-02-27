@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = env("DATABASE_PROVIDER")
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  audits       AuditLog[]
+}
+
+model TicketCache {
+  id                   String   @id @default(cuid())
+  ticketId             String   @unique
+  subject              String
+  status               String
+  requesterId          String
+  requesterEmail       String
+  requesterName        String
+  updatedAtZendesk     DateTime
+  updatedAtLocal       DateTime
+  language             String?
+  category             String?
+  urgency              String?
+  doNotSend            Boolean  @default(false)
+  snoozedUntil         DateTime?
+  lastCommentsFetchedAt DateTime?
+  rawMetadataJson      String
+  drafts               Draft[]
+}
+
+model Draft {
+  id                     String   @id @default(cuid())
+  ticketId               String
+  version                Int
+  createdAt              DateTime @default(now())
+  model                  String
+  promptVersion          String
+  language               String
+  summaryBulletsJson     String
+  category               String
+  urgency                String
+  confidence             Float    @default(0)
+  suggestedReply         String
+  suggestedInternalNote  String
+  followUpQuestionsJson  String
+  redFlagsJson           String   @default("[]")
+  nextStepsJson          String   @default("[]")
+
+  ticket TicketCache @relation(fields: [ticketId], references: [ticketId], onDelete: Cascade)
+
+  @@unique([ticketId, version])
+}
+
+model AuditLog {
+  id                String   @id @default(cuid())
+  ticketId          String
+  adminUserId       String
+  createdAt         DateTime @default(now())
+  actionType        String
+  contentHash       String
+  zendeskResultJson String?
+  success           Boolean
+  errorMessage      String?
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+}
