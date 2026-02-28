@@ -18,6 +18,19 @@ export default function TicketDashboard() {
 
   const selectedIndex = useMemo(() => tickets.findIndex((t) => t.ticketId === selected), [tickets, selected]);
 
+  function getReadableError(error: unknown, fallback: string) {
+    if (!(error instanceof Error)) return fallback;
+
+    const message = error.message.trim();
+    if (!message) return fallback;
+
+    if (message.toLowerCase() === 'fetch failed') {
+      return 'Unable to reach the server. Please check deployment health and required environment variables, then try Global Sync again.';
+    }
+
+    return message;
+  }
+
   function parseJsonArray(value: string | null | undefined): string[] {
     if (!value) return [];
     try {
@@ -37,7 +50,10 @@ export default function TicketDashboard() {
       setError(null);
       if (!selected && json.tickets?.length) setSelected(json.tickets[0].ticketId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to load tickets right now. Please verify API credentials and try Global Sync again.';
+      const message = getReadableError(
+        error,
+        'Unable to load tickets right now. Please verify API credentials and try Global Sync again.'
+      );
       setTickets([]);
       setError(message);
     }
@@ -52,9 +68,9 @@ export default function TicketDashboard() {
       setReply(json.draft?.suggestedReply ?? '');
       setNote(json.draft?.suggestedInternalNote ?? '');
       setError(null);
-    } catch {
+    } catch (error) {
       setDetails(null);
-      setError('Unable to load ticket details.');
+      setError(getReadableError(error, 'Unable to load ticket details.'));
     }
   }
 
