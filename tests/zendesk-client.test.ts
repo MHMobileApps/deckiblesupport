@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getZendeskAuthHeader } from '../lib/zendesk/client';
+import { getZendeskAuthHeader, isZendeskConfigured } from '../lib/zendesk/client';
 
 describe('zendesk client auth header', () => {
   it('uses email/token basic auth format', () => {
@@ -7,5 +7,9 @@ describe('zendesk client auth header', () => {
     expect(header.startsWith('Basic ')).toBe(true);
     const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8');
     expect(decoded.includes('/token:')).toBe(true);
+  });
+
+  it('detects placeholder configuration', () => {
+    expect(isZendeskConfigured()).toBe(false);
   });
 });
