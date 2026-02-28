@@ -6,6 +6,17 @@ type ZendeskResponse<T> = T & { next_page?: string | null };
 const baseUrl = `https://${env.ZENDESK_SUBDOMAIN}.zendesk.com`;
 const basic = Buffer.from(`${env.ZENDESK_EMAIL}/token:${env.ZENDESK_API_TOKEN}`).toString('base64');
 
+function isPlaceholder(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length === 0 || normalized.includes('placeholder') || normalized.includes('your_');
+}
+
+function assertZendeskConfigured() {
+  if (isPlaceholder(env.ZENDESK_EMAIL) || isPlaceholder(env.ZENDESK_API_TOKEN)) {
+    throw new Error('Zendesk API credentials are not configured. Set ZENDESK_EMAIL and ZENDESK_API_TOKEN.');
+  }
+}
+
 export function getZendeskAuthHeader() {
   return `Basic ${basic}`;
 }
@@ -43,6 +54,8 @@ async function wait(ms: number) {
 }
 
 async function request<T>(path: string, init?: RequestInit, attempt = 0): Promise<T> {
+  assertZendeskConfigured();
+
   const res = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
@@ -111,4 +124,9 @@ export async function listTicketFields() {
 
 export async function getUser(userId: number) {
   return schedule(() => request<{ user: any }>(`/api/v2/users/${userId}.json`));
+}
+
+export async function testZendeskConnection() {
+  const response = await schedule(() => request<{ user: { id: number; email: string; name: string } }>(`/api/v2/users/me.json`));
+  return response.user;
 }

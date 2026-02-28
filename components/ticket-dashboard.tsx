@@ -31,14 +31,15 @@ export default function TicketDashboard() {
   async function loadTickets(sync = false) {
     try {
       const res = await fetch(`/api/tickets?status=unresolved${sync ? '&sync=true' : ''}`);
-      if (!res.ok) throw new Error(`Ticket list request failed (${res.status})`);
       const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? `Ticket list request failed (${res.status})`);
       setTickets(json.tickets ?? []);
       setError(null);
       if (!selected && json.tickets?.length) setSelected(json.tickets[0].ticketId);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load tickets right now. Please verify API credentials and try Global Sync again.';
       setTickets([]);
-      setError('Unable to load tickets right now. Please verify API credentials and try Global Sync again.');
+      setError(message);
     }
   }
 
