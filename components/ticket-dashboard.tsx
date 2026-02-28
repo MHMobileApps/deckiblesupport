@@ -2,261 +2,160 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-type Ticket = { ticketId: string; subject: string; status: string; language?: string | null; category?: string | null; urgency?: string | null; doNotSend: boolean; updatedAtZendesk: string };
+type Ticket = {
+  ticketId: string;
+  subject: string;
+  status: string;
+  requesterName: string;
+  updatedAtZendesk: string;
+};
+
+type Details = {
+  ticket: { id: number; subject: string; status: string };
+  comments: Array<{ id: number; body: string; public: boolean; created_at: string }>;
+  output: {
+    summaryBullets: string[];
+    category: string;
+    urgency: string;
+    confidence: number;
+    suggestedReply: string;
+  };
+};
 
 export default function TicketDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [details, setDetails] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [details, setDetails] = useState<Details | null>(null);
   const [reply, setReply] = useState('');
-  const [note, setNote] = useState('');
-  const [setPending, setSetPending] = useState(true);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmChecked, setConfirmChecked] = useState(false);
-  const [diff, setDiff] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedIndex = useMemo(() => tickets.findIndex((t) => t.ticketId === selected), [tickets, selected]);
+  const selectedIndex = useMemo(() => tickets.findIndex((ticket) => ticket.ticketId === selectedId), [tickets, selectedId]);
 
-  function getReadableError(error: unknown, fallback: string) {
-    if (!(error instanceof Error)) return fallback;
-
-    const message = error.message.trim();
-    if (!message) return fallback;
-
-    if (message.toLowerCase() === 'fetch failed') {
-      return 'Unable to reach the server. Please check deployment health and required environment variables, then try Global Sync again.';
-    }
-
-    return message;
+  async function loadTickets() {
+    setError(null);
+    const res = await fetch('/api/tickets');
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error ?? 'Unable to load tickets');
+    setTickets(json.tickets ?? []);
+    if (!selectedId && json.tickets?.length) setSelectedId(json.tickets[0].ticketId);
   }
 
-  function parseJsonArray(value: string | null | undefined): string[] {
-    if (!value) return [];
+  async function loadDetails(ticketId: string, currentDraft?: string) {
+    setLoading(true);
+    setError(null);
     try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  async function loadTickets(sync = false) {
-    try {
-      const res = await fetch(`/api/tickets?status=unresolved${sync ? '&sync=true' : ''}`);
+      const res = currentDraft
+        ? await fetch(`/api/tickets/${ticketId}/draft/regenerate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentDraft }),
+          })
+        : await fetch(`/api/tickets/${ticketId}`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `Ticket list request failed (${res.status})`);
-      setTickets(json.tickets ?? []);
-      setError(null);
-      if (!selected && json.tickets?.length) setSelected(json.tickets[0].ticketId);
-    } catch (error) {
-      const message = getReadableError(
-        error,
-        'Unable to load tickets right now. Please verify API credentials and try Global Sync again.'
-      );
-      setTickets([]);
-      setError(message);
-    }
-  }
-
-  async function loadDetail(id: string) {
-    try {
-      const res = await fetch(`/api/tickets/${id}`);
-      if (!res.ok) throw new Error(`Ticket detail request failed (${res.status})`);
-      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'Unable to load ticket details');
       setDetails(json);
-      setReply(json.draft?.suggestedReply ?? '');
-      setNote(json.draft?.suggestedInternalNote ?? '');
-      setError(null);
-    } catch (error) {
+      setReply(json.output?.suggestedReply ?? '');
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unexpected error');
       setDetails(null);
-      setError(getReadableError(error, 'Unable to load ticket details.'));
+    } finally {
+      setLoading(false);
     }
   }
-
-  useEffect(() => { void loadTickets(true); }, []);
-  useEffect(() => { if (selected) void loadDetail(selected); }, [selected]);
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() === 'j' && selectedIndex < tickets.length - 1) setSelected(tickets[selectedIndex + 1].ticketId);
-      if (e.key.toLowerCase() === 'k' && selectedIndex > 0) setSelected(tickets[selectedIndex - 1].ticketId);
-      if (e.key.toLowerCase() === 'r' && selected) void regenerate();
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') setConfirmOpen(true);
+    void loadTickets();
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) void loadDetails(selectedId);
+  }, [selectedId]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key.toLowerCase() === 'j' && selectedIndex < tickets.length - 1) setSelectedId(tickets[selectedIndex + 1].ticketId);
+      if (event.key.toLowerCase() === 'k' && selectedIndex > 0) setSelectedId(tickets[selectedIndex - 1].ticketId);
     }
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedIndex, tickets, selected, reply]);
-
-  async function regenerate() {
-    if (!selected) return;
-    const prev = reply;
-    const res = await fetch(`/api/tickets/${selected}/draft/regenerate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentDraft: reply }) });
-    const json = await res.json();
-    setReply(json.output?.suggestedReply ?? '');
-    setNote(json.output?.suggestedInternalNote ?? '');
-    setDiff(`Old:\n${prev}\n\nNew:\n${json.output?.suggestedReply ?? ''}`);
-    await loadDetail(selected);
-  }
-
-  async function saveDraft() {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/draft/save`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ suggestedReply: reply, suggestedInternalNote: note, language: details?.draft?.language ?? 'en', category: details?.draft?.category ?? 'other', urgency: details?.draft?.urgency ?? 'medium', summaryBullets: parseJsonArray(details?.draft?.summaryBulletsJson), followUpQuestions: parseJsonArray(details?.draft?.followUpQuestionsJson), redFlags: parseJsonArray(details?.draft?.redFlagsJson), nextSteps: parseJsonArray(details?.draft?.nextStepsJson) }) });
-  }
-
-  async function sendReply() {
-    if (!selected) return;
-    const res = await fetch(`/api/tickets/${selected}/send-reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ replyText: reply, setPendingAfterSend: setPending }) });
-    if (res.ok) setConfirmOpen(false);
-    await loadDetail(selected);
-  }
-
-  async function addNote() {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/add-note`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ noteText: note }) });
-  }
-
-  async function updateStatus(status: string) {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/update-status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-    await loadTickets(false);
-  }
-
-  async function toggleDoNotSend(checked: boolean) {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/toggle-do-not-send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doNotSend: checked }) });
-    await loadTickets(false);
-    await loadDetail(selected);
-  }
-
-  async function snooze(hours: number) {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/toggle-do-not-send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doNotSend: details?.local?.doNotSend ?? false, snoozeHours: hours }) });
-    await loadTickets(false);
-  }
-
-  async function refreshSelectedTicket() {
-    if (!selected) return;
-    await fetch(`/api/tickets/${selected}/sync`, { method: 'POST' });
-    await loadDetail(selected);
-  }
+  }, [selectedIndex, tickets]);
 
   return (
-    <div className="grid grid-cols-12 h-screen">
-      <aside className="col-span-3 border-r bg-white p-3 overflow-y-auto">
-        <div className="flex gap-2 mb-2">
-          <button className="text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => loadTickets(true)}>Global Sync</button>
-          <a className="text-sm bg-slate-200 px-2 py-1 rounded" href="/audit">Export audit CSV</a>
-        </div>
-        {error && <p className="mb-2 rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">{error}</p>}
-        {tickets.map((t) => (
-          <button key={t.ticketId} onClick={() => setSelected(t.ticketId)} className={`w-full text-left p-2 rounded mb-2 ${selected === t.ticketId ? 'bg-blue-100' : 'bg-slate-100'}`}>
-            <div className="font-medium">#{t.ticketId} {t.subject}</div>
-            <div className="text-xs">{t.status} • {t.category ?? 'uncategorized'} • {t.urgency ?? 'n/a'}</div>
+    <div className="grid grid-cols-12 min-h-screen bg-slate-50">
+      <aside className="col-span-4 border-r bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h1 className="text-lg font-semibold">Zendesk Inbox</h1>
+          <button className="rounded bg-slate-200 px-3 py-1 text-sm" onClick={() => void loadTickets()}>
+            Refresh
           </button>
-        ))}
+        </div>
+        <div className="space-y-2">
+          {tickets.map((ticket) => (
+            <button
+              key={ticket.ticketId}
+              className={`w-full rounded border p-3 text-left ${selectedId === ticket.ticketId ? 'border-blue-400 bg-blue-50' : 'bg-white'}`}
+              onClick={() => setSelectedId(ticket.ticketId)}
+            >
+              <p className="text-xs text-slate-500">#{ticket.ticketId} · {ticket.status}</p>
+              <p className="font-medium">{ticket.subject}</p>
+              <p className="text-xs text-slate-500">{ticket.requesterName}</p>
+            </button>
+          ))}
+        </div>
       </aside>
-      <main className="col-span-9 p-4 overflow-y-auto">
-        {details && (
+
+      <main className="col-span-8 p-4">
+        {error && <p className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-red-700">{error}</p>}
+        {!selectedId && <p>Select a ticket.</p>}
+        {selectedId && (
           <>
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-xl font-semibold">{details.ticket.subject}</h2>
-                <p className="text-sm">Requester: {details.local?.requesterName || 'Unknown'} ({details.local?.requesterEmail || 'Unknown'})</p>
-                <p className="text-sm">Language: <span className="px-2 py-1 bg-indigo-100 rounded">{details.draft?.language || details.local?.language || 'Unknown'}</span></p>
-              </div>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">{details?.ticket.subject ?? 'Loading ticket...'}</h2>
               <button
-                className="bg-slate-200 px-3 py-1 rounded"
-                onClick={() => {
-                  void refreshSelectedTicket();
-                }}
+                className="rounded bg-slate-200 px-3 py-1 text-sm"
+                onClick={() => void loadDetails(selectedId, reply)}
+                disabled={loading}
               >
-                Refresh
+                {loading ? 'Generating…' : 'Regenerate with ChatGPT'}
               </button>
             </div>
 
-            <div className="mt-3 p-3 bg-white rounded border">
-              <h3 className="font-medium mb-2">Conversation</h3>
-              <div className="space-y-2">
-                {(details.comments ?? []).map((c: any) => (
-                  <div key={c.id} className={`p-2 rounded ${c.public ? 'bg-blue-50' : 'bg-amber-50'}`}>
-                    <div className="text-xs">{c.public ? 'Public' : 'Internal'} • {c.created_at}</div>
-                    <p className="whitespace-pre-wrap text-sm">{c.body}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <section className="rounded border bg-white p-3">
+                <h3 className="mb-2 font-medium">Conversation</h3>
+                <div className="max-h-96 space-y-2 overflow-y-auto">
+                  {(details?.comments ?? []).map((comment) => (
+                    <div key={comment.id} className={`rounded p-2 ${comment.public ? 'bg-blue-50' : 'bg-amber-50'}`}>
+                      <p className="text-xs text-slate-500">{comment.public ? 'Public reply' : 'Internal note'} · {comment.created_at}</p>
+                      <p className="whitespace-pre-wrap text-sm">{comment.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="bg-white border rounded p-3">
-                <h3 className="font-medium">AI Summary</h3>
-                <p className="text-sm">Category: {details.draft?.category ?? 'n/a'}</p>
-                <p className="text-sm">Urgency: {details.draft?.urgency ?? 'n/a'}</p>
-                <p className="text-sm">Confidence:</p>
-                <div className="w-full bg-slate-200 rounded h-2"><div className="h-2 bg-green-500 rounded" style={{ width: `${Math.round((details.draft?.confidence ?? 0) * 100)}%` }} /></div>
-                {parseJsonArray(details.draft?.redFlagsJson).length > 0 && (
-                  <div className="mt-2 bg-red-50 border border-red-200 p-2 rounded text-sm">
-                    <strong>Red flags:</strong> {parseJsonArray(details.draft?.redFlagsJson).join(', ')}
-                  </div>
-                )}
-                <ul className="list-disc pl-5 mt-2 text-sm">
-                  {parseJsonArray(details.draft?.summaryBulletsJson).map((b: string) => <li key={b}>{b}</li>)}
+              <section className="rounded border bg-white p-3">
+                <h3 className="font-medium">AI Suggestion</h3>
+                <p className="text-sm">Category: {details?.output.category ?? 'n/a'}</p>
+                <p className="text-sm">Urgency: {details?.output.urgency ?? 'n/a'}</p>
+                <p className="text-sm">Confidence: {Math.round((details?.output.confidence ?? 0) * 100)}%</p>
+                <ul className="mt-2 list-disc pl-5 text-sm">
+                  {(details?.output.summaryBullets ?? []).map((bullet) => (
+                    <li key={bullet}>{bullet}</li>
+                  ))}
                 </ul>
-              </div>
-              <div className="bg-white border rounded p-3">
-                <h3 className="font-medium">Draft Diff</h3>
-                <pre className="text-xs whitespace-pre-wrap">{diff || 'Regenerate to compare changes.'}</pre>
-              </div>
-            </div>
 
-            <div className="mt-3 bg-white border rounded p-3">
-              <div className="flex justify-between">
-                <h3 className="font-medium">Suggested Reply (editable)</h3>
-                <button className="text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => navigator.clipboard.writeText(reply)}>One click copy</button>
-              </div>
-              <textarea className="w-full border p-2 mt-2 h-44" value={reply} onChange={(e) => setReply(e.target.value)} />
-
-              <h3 className="font-medium mt-3">Suggested Internal Note (English)</h3>
-              <textarea className="w-full border p-2 mt-2 h-24" value={note} onChange={(e) => setNote(e.target.value)} />
-              <button className="mt-2 text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => setNote(parseJsonArray(details.draft?.summaryBulletsJson).join('\n- '))}>Create internal note from summary</button>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={regenerate}>Regenerate Draft (R)</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={saveDraft}>Save Draft</button>
-                <button className="bg-emerald-600 text-white px-3 py-2 rounded" onClick={() => setConfirmOpen(true)} disabled={details.local?.doNotSend}>Approve and Send Reply</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={addNote}>Add Internal Note</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={() => updateStatus('open')}>Set Open</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={() => updateStatus('pending')}>Set Pending</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={() => updateStatus('solved')}>Set Solved</button>
-                <button className="bg-slate-200 px-3 py-2 rounded" onClick={() => snooze(4)}>Snooze 4h</button>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={details.local?.doNotSend ?? false} onChange={(e) => toggleDoNotSend(e.target.checked)} /> Do Not Send
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={setPending} onChange={(e) => setSetPending(e.target.checked)} /> Set to pending after send
-                </label>
-              </div>
+                <h4 className="mt-3 font-medium">Suggested response</h4>
+                <textarea className="mt-2 h-72 w-full rounded border p-2" value={reply} onChange={(event) => setReply(event.target.value)} />
+                <button className="mt-2 rounded bg-slate-200 px-3 py-1 text-sm" onClick={() => navigator.clipboard.writeText(reply)}>
+                  Copy response
+                </button>
+              </section>
             </div>
           </>
         )}
       </main>
-
-      {confirmOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
-          <div className="bg-white w-full max-w-xl p-4 rounded">
-            <h3 className="font-semibold">Confirm Send</h3>
-            <p className="text-sm mb-2">Final reply preview:</p>
-            <pre className="text-sm whitespace-pre-wrap bg-slate-100 p-2 rounded max-h-60 overflow-y-auto">{reply}</pre>
-            <label className="mt-2 flex items-center gap-2">
-              <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} /> I confirm this is ready to send
-            </label>
-            <div className="flex justify-end gap-2 mt-4">
-              <button className="px-3 py-1 bg-slate-200 rounded" onClick={() => setConfirmOpen(false)}>Cancel</button>
-              <button className="px-3 py-1 bg-emerald-600 text-white rounded disabled:opacity-60" disabled={!confirmChecked} onClick={sendReply}>Send</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
