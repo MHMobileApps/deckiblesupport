@@ -93,6 +93,12 @@ export default function TicketDashboard() {
     await loadTickets(false);
   }
 
+  async function refreshSelectedTicket() {
+    if (!selected) return;
+    await fetch(`/api/tickets/${selected}/sync`, { method: 'POST' });
+    await loadDetail(selected);
+  }
+
   return (
     <div className="grid grid-cols-12 h-screen">
       <aside className="col-span-3 border-r bg-white p-3 overflow-y-auto">
@@ -118,11 +124,8 @@ export default function TicketDashboard() {
               </div>
               <button
                 className="bg-slate-200 px-3 py-1 rounded"
-                onClick={async () => {
-                  await fetch(`/api/tickets/${selected}/sync`, { method: 'POST' });
-                  if (selected) {
-                    await loadDetail(selected);
-                  }
+                onClick={() => {
+                  void refreshSelectedTicket();
                 }}
               >
                 Refresh
