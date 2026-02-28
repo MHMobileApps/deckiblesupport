@@ -9,7 +9,14 @@ export async function GET(req: NextRequest) {
 
   const cursor = req.nextUrl.searchParams.get('cursor') ?? undefined;
   const sync = req.nextUrl.searchParams.get('sync') === 'true';
-  if (sync) await syncUnresolvedTickets(cursor);
+  if (sync) {
+    try {
+      await syncUnresolvedTickets(cursor);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown Zendesk sync error';
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
 
   const status = req.nextUrl.searchParams.get('status');
   const q = req.nextUrl.searchParams.get('q') ?? '';
