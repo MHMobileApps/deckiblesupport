@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import TicketDashboard from '@/components/ticket-dashboard';
 
 export default function Home() {
-  redirect('/tickets');
+  return <TicketDashboard />;
 }

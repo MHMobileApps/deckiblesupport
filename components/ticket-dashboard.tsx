@@ -8,6 +8,7 @@ export default function TicketDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [note, setNote] = useState('');
   const [setPending, setSetPending] = useState(true);
@@ -17,19 +18,43 @@ export default function TicketDashboard() {
 
   const selectedIndex = useMemo(() => tickets.findIndex((t) => t.ticketId === selected), [tickets, selected]);
 
+  function parseJsonArray(value: string | null | undefined): string[] {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   async function loadTickets(sync = false) {
-    const res = await fetch(`/api/tickets?status=unresolved${sync ? '&sync=true' : ''}`);
-    const json = await res.json();
-    setTickets(json.tickets ?? []);
-    if (!selected && json.tickets?.length) setSelected(json.tickets[0].ticketId);
+    try {
+      const res = await fetch(`/api/tickets?status=unresolved${sync ? '&sync=true' : ''}`);
+      if (!res.ok) throw new Error(`Ticket list request failed (${res.status})`);
+      const json = await res.json();
+      setTickets(json.tickets ?? []);
+      setError(null);
+      if (!selected && json.tickets?.length) setSelected(json.tickets[0].ticketId);
+    } catch {
+      setTickets([]);
+      setError('Unable to load tickets right now. Please verify API credentials and try Global Sync again.');
+    }
   }
 
   async function loadDetail(id: string) {
-    const res = await fetch(`/api/tickets/${id}`);
-    const json = await res.json();
-    setDetails(json);
-    setReply(json.draft?.suggestedReply ?? '');
-    setNote(json.draft?.suggestedInternalNote ?? '');
+    try {
+      const res = await fetch(`/api/tickets/${id}`);
+      if (!res.ok) throw new Error(`Ticket detail request failed (${res.status})`);
+      const json = await res.json();
+      setDetails(json);
+      setReply(json.draft?.suggestedReply ?? '');
+      setNote(json.draft?.suggestedInternalNote ?? '');
+      setError(null);
+    } catch {
+      setDetails(null);
+      setError('Unable to load ticket details.');
+    }
   }
 
   useEffect(() => { void loadTickets(true); }, []);
@@ -59,7 +84,7 @@ export default function TicketDashboard() {
 
   async function saveDraft() {
     if (!selected) return;
-    await fetch(`/api/tickets/${selected}/draft/save`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ suggestedReply: reply, suggestedInternalNote: note, language: details?.draft?.language ?? 'en', category: details?.draft?.category ?? 'other', urgency: details?.draft?.urgency ?? 'medium', summaryBullets: JSON.parse(details?.draft?.summaryBulletsJson ?? '[]'), followUpQuestions: JSON.parse(details?.draft?.followUpQuestionsJson ?? '[]'), redFlags: JSON.parse(details?.draft?.redFlagsJson ?? '[]'), nextSteps: JSON.parse(details?.draft?.nextStepsJson ?? '[]') }) });
+    await fetch(`/api/tickets/${selected}/draft/save`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ suggestedReply: reply, suggestedInternalNote: note, language: details?.draft?.language ?? 'en', category: details?.draft?.category ?? 'other', urgency: details?.draft?.urgency ?? 'medium', summaryBullets: parseJsonArray(details?.draft?.summaryBulletsJson), followUpQuestions: parseJsonArray(details?.draft?.followUpQuestionsJson), redFlags: parseJsonArray(details?.draft?.redFlagsJson), nextSteps: parseJsonArray(details?.draft?.nextStepsJson) }) });
   }
 
   async function sendReply() {
@@ -106,6 +131,7 @@ export default function TicketDashboard() {
           <button className="text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => loadTickets(true)}>Global Sync</button>
           <a className="text-sm bg-slate-200 px-2 py-1 rounded" href="/audit">Export audit CSV</a>
         </div>
+        {error && <p className="mb-2 rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">{error}</p>}
         {tickets.map((t) => (
           <button key={t.ticketId} onClick={() => setSelected(t.ticketId)} className={`w-full text-left p-2 rounded mb-2 ${selected === t.ticketId ? 'bg-blue-100' : 'bg-slate-100'}`}>
             <div className="font-medium">#{t.ticketId} {t.subject}</div>
@@ -151,13 +177,13 @@ export default function TicketDashboard() {
                 <p className="text-sm">Urgency: {details.draft?.urgency ?? 'n/a'}</p>
                 <p className="text-sm">Confidence:</p>
                 <div className="w-full bg-slate-200 rounded h-2"><div className="h-2 bg-green-500 rounded" style={{ width: `${Math.round((details.draft?.confidence ?? 0) * 100)}%` }} /></div>
-                {JSON.parse(details.draft?.redFlagsJson ?? '[]').length > 0 && (
+                {parseJsonArray(details.draft?.redFlagsJson).length > 0 && (
                   <div className="mt-2 bg-red-50 border border-red-200 p-2 rounded text-sm">
-                    <strong>Red flags:</strong> {JSON.parse(details.draft?.redFlagsJson ?? '[]').join(', ')}
+                    <strong>Red flags:</strong> {parseJsonArray(details.draft?.redFlagsJson).join(', ')}
                   </div>
                 )}
                 <ul className="list-disc pl-5 mt-2 text-sm">
-                  {JSON.parse(details.draft?.summaryBulletsJson ?? '[]').map((b: string) => <li key={b}>{b}</li>)}
+                  {parseJsonArray(details.draft?.summaryBulletsJson).map((b: string) => <li key={b}>{b}</li>)}
                 </ul>
               </div>
               <div className="bg-white border rounded p-3">
@@ -175,7 +201,7 @@ export default function TicketDashboard() {
 
               <h3 className="font-medium mt-3">Suggested Internal Note (English)</h3>
               <textarea className="w-full border p-2 mt-2 h-24" value={note} onChange={(e) => setNote(e.target.value)} />
-              <button className="mt-2 text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => setNote(JSON.parse(details.draft?.summaryBulletsJson ?? '[]').join('\n- '))}>Create internal note from summary</button>
+              <button className="mt-2 text-sm bg-slate-200 px-2 py-1 rounded" onClick={() => setNote(parseJsonArray(details.draft?.summaryBulletsJson).join('\n- '))}>Create internal note from summary</button>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button className="bg-slate-200 px-3 py-2 rounded" onClick={regenerate}>Regenerate Draft (R)</button>
