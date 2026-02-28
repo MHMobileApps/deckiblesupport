@@ -3,6 +3,13 @@ import { log } from '@/lib/logger';
 
 type ZendeskResponse<T> = T & { next_page?: string | null };
 
+export class ZendeskConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ZendeskConfigurationError';
+  }
+}
+
 const baseUrl = `https://${env.ZENDESK_SUBDOMAIN}.zendesk.com`;
 const basic = Buffer.from(`${env.ZENDESK_EMAIL}/token:${env.ZENDESK_API_TOKEN}`).toString('base64');
 
@@ -11,9 +18,13 @@ function isPlaceholder(value: string) {
   return normalized.length === 0 || normalized.includes('placeholder') || normalized.includes('your_');
 }
 
+export function isZendeskConfigured() {
+  return !isPlaceholder(env.ZENDESK_EMAIL) && !isPlaceholder(env.ZENDESK_API_TOKEN);
+}
+
 function assertZendeskConfigured() {
-  if (isPlaceholder(env.ZENDESK_EMAIL) || isPlaceholder(env.ZENDESK_API_TOKEN)) {
-    throw new Error('Zendesk API credentials are not configured. Set ZENDESK_EMAIL and ZENDESK_API_TOKEN.');
+  if (!isZendeskConfigured()) {
+    throw new ZendeskConfigurationError('Zendesk API credentials are not configured. Set ZENDESK_EMAIL and ZENDESK_API_TOKEN.');
   }
 }
 

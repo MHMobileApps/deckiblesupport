@@ -34,11 +34,17 @@ export default function TicketDashboard() {
 
   async function loadTickets() {
     setError(null);
-    const res = await fetch('/api/tickets');
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.error ?? 'Unable to load tickets');
-    setTickets(json.tickets ?? []);
-    if (!selectedId && json.tickets?.length) setSelectedId(json.tickets[0].ticketId);
+    try {
+      const res = await fetch('/api/tickets');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'Unable to load tickets');
+      setTickets(json.tickets ?? []);
+      if (json?.needsSetup) setError(json?.error ?? 'Configure Zendesk credentials to load tickets.');
+      if (!selectedId && json.tickets?.length) setSelectedId(json.tickets[0].ticketId);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load tickets');
+      setTickets([]);
+    }
   }
 
   async function loadDetails(ticketId: string, currentDraft?: string) {

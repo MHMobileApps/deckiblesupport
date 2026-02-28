@@ -2,13 +2,6 @@
 
 A lightweight internal tool that connects directly to Zendesk and uses ChatGPT to suggest agent replies.
 
-## What changed
-
-- Prisma has been removed from the project.
-- Tickets are loaded directly from Zendesk on each request.
-- Suggested replies are generated directly from Zendesk ticket/comments using ChatGPT.
-- The dashboard focuses on browsing tickets and regenerating response suggestions.
-
 ## Environment
 
 Copy `.env.example` to `.env` and set:
@@ -20,13 +13,15 @@ Copy `.env.example` to `.env` and set:
 - `LLM_MODEL` (default `gpt-4.1-mini`)
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD_HASH` (bcrypt hash)
-- `SESSION_SECRET`
+- `APP_BASE_URL` (`https://deckiblesupport.vercel.app` in production, `http://localhost:3000` locally)
+- `SESSION_SECRET` (long random secret used to sign session cookies)
 
 ## Run locally
 
 ```bash
 npm install
 cp .env.example .env
+# for local dev, set APP_BASE_URL=http://localhost:3000
 npm run dev
 ```
 
@@ -41,3 +36,4 @@ npm run dev
 
 - The app does not auto-send replies.
 - Keep all Zendesk and OpenAI credentials server-side only.
+- Auth is cookie-based and enforced for dashboard and ticket APIs.
