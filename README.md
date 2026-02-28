@@ -45,11 +45,7 @@ Required:
 
 Database:
 
-- Local dev (SQLite):
-  - `DATABASE_PROVIDER="sqlite"`
-  - `DATABASE_URL="file:./prisma/dev.db"`
-- Production (Postgres):
-  - `DATABASE_PROVIDER="postgresql"`
+- Database (PostgreSQL for local and production):
   - `DATABASE_URL="postgresql://..."`
 
 Optional:
