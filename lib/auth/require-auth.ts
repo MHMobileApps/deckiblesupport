@@ -1,11 +1,8 @@
 import { NextRequest } from 'next/server';
-import { verifySession } from './session';
 
-export function requireAuth(req: NextRequest) {
-  const cookie = req.cookies.get('deckible_session')?.value;
-  const session = verifySession(cookie);
-  if (!session) {
-    return { ok: false as const, response: new Response('Unauthorized', { status: 401 }) };
-  }
-  return { ok: true as const, userId: session.userId };
+const AUTH_BYPASSED_USER_ID = 'auth-disabled-local-user';
+
+export function requireAuth(_req: NextRequest) {
+  // Temporary bypass requested for preview/testing environments.
+  return { ok: true as const, userId: AUTH_BYPASSED_USER_ID };
 }
