@@ -26,7 +26,13 @@ export async function destroySession() {
 
 export function verifySession(raw?: string) {
   if (!raw) return null;
-  const [userId, ts, sig] = raw.split('.');
+  const parts = raw.split('.');
+  if (parts.length < 3) return null;
+
+  const sig = parts.pop();
+  const ts = parts.pop();
+  const userId = parts.join('.');
+
   if (!userId || !ts || !sig) return null;
   const payload = `${userId}.${ts}`;
   if (sign(payload) !== sig) return null;

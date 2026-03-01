@@ -29,4 +29,18 @@ describe('requireAuth', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.userId).toBe('admin@local');
   });
+
+  it('accepts emails containing dots', () => {
+    const secret = process.env.SESSION_SECRET ?? 'change-this-in-production';
+    const payload = 'first.last@local.1700000000000';
+    const cookie = `${payload}.${sign(payload, secret)}`;
+
+    const req = {
+      cookies: { get: () => ({ value: cookie }) },
+    } as any;
+
+    const result = requireAuth(req);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.userId).toBe('first.last@local');
+  });
 });
