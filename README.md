@@ -11,8 +11,6 @@ Copy `.env.example` to `.env` and set:
 - `ZENDESK_API_TOKEN`
 - `LLM_API_KEY` (OpenAI key)
 - `LLM_MODEL` (default `gpt-4.1-mini`)
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD_HASH` (bcrypt hash)
 - `APP_BASE_URL` (`https://deckiblesupport.vercel.app` in production, `http://localhost:3000` locally)
 - `SESSION_SECRET` (long random secret used to sign session cookies)
 
@@ -36,4 +34,4 @@ npm run dev
 
 - The app does not auto-send replies.
 - Keep all Zendesk and OpenAI credentials server-side only.
-- Auth is cookie-based and enforced for dashboard and ticket APIs.
+- Auth is cookie-based, using Zendesk email + API token validation at login, and enforced for dashboard and ticket APIs.
