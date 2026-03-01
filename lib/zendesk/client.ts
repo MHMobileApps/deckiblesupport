@@ -10,7 +10,29 @@ export class ZendeskConfigurationError extends Error {
   }
 }
 
-const baseUrl = `https://${env.ZENDESK_SUBDOMAIN}.zendesk.com`;
+export function normalizeZendeskSubdomain(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  let hostname = trimmed;
+  if (trimmed.includes('://')) {
+    try {
+      hostname = new URL(trimmed).hostname;
+    } catch {
+      hostname = trimmed;
+    }
+  }
+
+  hostname = hostname.replace(/^www\./i, '');
+  hostname = hostname.replace(/\.zendesk\.com$/i, '');
+
+  return hostname.split('.')[0]?.trim().toLowerCase() ?? '';
+}
+
+const zendeskSubdomain = normalizeZendeskSubdomain(env.ZENDESK_SUBDOMAIN);
+const baseUrl = `https://${zendeskSubdomain}.zendesk.com`;
 const basic = Buffer.from(`${env.ZENDESK_EMAIL}/token:${env.ZENDESK_API_TOKEN}`).toString('base64');
 
 function isPlaceholder(value: string) {
@@ -23,6 +45,10 @@ export function isZendeskConfigured() {
 }
 
 function assertZendeskConfigured() {
+  if (!zendeskSubdomain) {
+    throw new ZendeskConfigurationError('Zendesk subdomain is not configured. Set ZENDESK_SUBDOMAIN.');
+  }
+
   if (!isZendeskConfigured()) {
     throw new ZendeskConfigurationError('Zendesk API credentials are not configured. Set ZENDESK_EMAIL and ZENDESK_API_TOKEN.');
   }
@@ -38,17 +64,25 @@ export function getZendeskAuthHeaderForUser(email: string, apiToken: string) {
 }
 
 export async function authenticateZendeskCredentials(email: string, apiToken: string) {
-  if (isPlaceholder(email) || isPlaceholder(apiToken)) {
+  if (!zendeskSubdomain || isPlaceholder(email) || isPlaceholder(apiToken)) {
     return null;
   }
 
-  const res = await fetch(`${baseUrl}/api/v2/users/me.json`, {
-    headers: {
-      Authorization: getZendeskAuthHeaderForUser(email, apiToken),
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/api/v2/users/me.json`, {
+      headers: {
+        Authorization: getZendeskAuthHeaderForUser(email, apiToken),
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+  } catch (error) {
+    log('warn', 'Zendesk authentication request failed', {
+      message: error instanceof Error ? error.message : 'Unknown fetch error',
+    });
+    return null;
+  }
 
   if (!res.ok) {
     return null;

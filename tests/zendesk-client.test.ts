@@ -4,6 +4,7 @@ import {
   getZendeskAuthHeader,
   getZendeskAuthHeaderForUser,
   isZendeskConfigured,
+  normalizeZendeskSubdomain,
 } from '../lib/zendesk/client';
 
 describe('zendesk client auth header', () => {
@@ -24,6 +25,12 @@ describe('zendesk client auth header', () => {
     expect(decoded).toBe('agent@deckible.com/token:api-token');
   });
 
+  it('normalizes zendesk subdomain values', () => {
+    expect(normalizeZendeskSubdomain('deckible')).toBe('deckible');
+    expect(normalizeZendeskSubdomain('deckible.zendesk.com')).toBe('deckible');
+    expect(normalizeZendeskSubdomain('https://deckible.zendesk.com')).toBe('deckible');
+  });
+
   it('detects placeholder configuration', () => {
     expect(isZendeskConfigured()).toBe(false);
   });
@@ -36,6 +43,15 @@ describe('zendesk client auth header', () => {
 
     const user = await authenticateZendeskCredentials('agent@deckible.com', 'api-token');
     expect(user).toEqual({ email: 'agent@deckible.com', name: 'Deckible Agent' });
+  });
+
+  it('returns null when zendesk auth request throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('network down');
+    }) as any);
+
+    const user = await authenticateZendeskCredentials('agent@deckible.com', 'wrong-token');
+    expect(user).toBeNull();
   });
 
   it('returns null for invalid zendesk credentials', async () => {
