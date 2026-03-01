@@ -1,8 +1,7 @@
-import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession } from '@/lib/auth/session';
 import { loginRateLimit } from '@/lib/auth/rate-limit';
-import { env } from '@/lib/env';
+import { authenticateZendeskCredentials } from '@/lib/zendesk/client';
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for') ?? 'local';
@@ -11,15 +10,19 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const email = String(body.email ?? '');
-  const password = String(body.password ?? '');
-  const validEmail = email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
-  const validPassword = await bcrypt.compare(password, env.ADMIN_PASSWORD_HASH);
+  const email = String(body.email ?? '').trim();
+  const password = String(body.password ?? '').trim();
 
-  if (!validEmail || !validPassword) {
+  if (!email || !password) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  await createSession(env.ADMIN_EMAIL);
-  return NextResponse.json({ ok: true });
+  const zendeskUser = await authenticateZendeskCredentials(email, password);
+
+  if (!zendeskUser) {
+    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+  }
+
+  await createSession(zendeskUser.email.toLowerCase());
+  return NextResponse.json({ ok: true, user: zendeskUser });
 }

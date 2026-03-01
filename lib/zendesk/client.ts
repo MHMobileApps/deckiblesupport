@@ -32,6 +32,39 @@ export function getZendeskAuthHeader() {
   return `Basic ${basic}`;
 }
 
+export function getZendeskAuthHeaderForUser(email: string, apiToken: string) {
+  const userBasic = Buffer.from(`${email}/token:${apiToken}`).toString('base64');
+  return `Basic ${userBasic}`;
+}
+
+export async function authenticateZendeskCredentials(email: string, apiToken: string) {
+  if (isPlaceholder(email) || isPlaceholder(apiToken)) {
+    return null;
+  }
+
+  const res = await fetch(`${baseUrl}/api/v2/users/me.json`, {
+    headers: {
+      Authorization: getZendeskAuthHeaderForUser(email, apiToken),
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const body = await res.json() as { user?: { email?: string; name?: string } };
+  if (!body.user?.email) {
+    return null;
+  }
+
+  return {
+    email: body.user.email,
+    name: body.user.name ?? body.user.email,
+  };
+}
+
 const queue: Array<() => Promise<void>> = [];
 let active = 0;
 const MAX_CONCURRENT = 3;
