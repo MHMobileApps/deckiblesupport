@@ -2,6 +2,7 @@ import { franc } from 'franc-min';
 import { redactForLlm } from '@/lib/security/redaction';
 import { draftSchema, DraftOutput } from './schema';
 import { getLlmClient } from './client';
+import { log } from '@/lib/logger';
 
 const SYSTEM_PROMPT = `You are a customer support drafting assistant for Deckible.
 You do NOT send messages. You only propose drafts for an agent to review.
@@ -21,35 +22,45 @@ Include summaryBullets, category, urgency, suggestedReply signed as \"Mark\", su
 
 export async function generateDraft(payload: Record<string, unknown>, currentDraft?: string): Promise<DraftOutput> {
   const client = getLlmClient();
-  const userPrompt = `Inputs: ${JSON.stringify(payload)}\nCurrentDraft: ${currentDraft ?? 'none'}\nTask: Output strict JSON only.`;
-  const raw = await client.generate({
-    system: SYSTEM_PROMPT,
-    developer: DEVELOPER_PROMPT,
-    user: redactForLlm(userPrompt),
-  });
+  const userPrompt = `Inputs: ${JSON.stringify(payload)}
+CurrentDraft: ${currentDraft ?? 'none'}
+Task: Output strict JSON only.`;
 
-  const parsed = await parseOrRepair(raw, client);
-  return parsed;
+  try {
+    const raw = await client.generate({
+      system: SYSTEM_PROMPT,
+      developer: DEVELOPER_PROMPT,
+      user: redactForLlm(userPrompt),
+    });
+
+    return await parseOrRepair(raw, client);
+  } catch (error) {
+    log('warn', 'LLM draft generation failed; using fallback', {
+      message: error instanceof Error ? error.message : 'Unknown LLM error',
+    });
+    return fallbackDraft(userPrompt, 'request failure');
+  }
 }
+
 
 async function parseOrRepair(raw: string, client: ReturnType<typeof getLlmClient>): Promise<DraftOutput> {
   try {
     return draftSchema.parse(JSON.parse(raw));
   } catch {
-    const repair = await client.generate({
-      system: 'Return corrected JSON only',
-      developer: 'Fix invalid JSON to match schema',
-      user: raw,
-    });
     try {
+      const repair = await client.generate({
+        system: 'Return corrected JSON only',
+        developer: 'Fix invalid JSON to match schema',
+        user: raw,
+      });
       return draftSchema.parse(JSON.parse(repair));
     } catch {
-      return fallbackDraft(raw);
+      return fallbackDraft(raw, 'invalid JSON');
     }
   }
 }
 
-function fallbackDraft(text: string): DraftOutput {
+function fallbackDraft(text: string, reason = 'unknown'): DraftOutput {
   const code = franc(text || 'hello');
   const language = code === 'spa' ? 'es' : code === 'deu' ? 'de' : 'en';
   const reply = language === 'es'
@@ -65,7 +76,7 @@ function fallbackDraft(text: string): DraftOutput {
     urgency: 'medium',
     confidence: 0.4,
     suggestedReply: reply,
-    suggestedInternalNote: 'Fallback draft generated due to JSON parsing failure.',
+    suggestedInternalNote: `Fallback draft generated due to LLM ${reason}.`,
     followUpQuestions: ['Can you share the exact steps you took?'],
     redFlags: [],
     nextSteps: ['Collect more details from requester']

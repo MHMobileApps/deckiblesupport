@@ -6,6 +6,7 @@ export interface LLMClient {
 
 class OpenAIStyleClient implements LLMClient {
   async generate(params: { system: string; developer: string; user: string; model?: string }): Promise<string> {
+    const combinedSystemPrompt = `${params.system}\n\nDeveloper instructions:\n${params.developer}`;
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -15,14 +16,16 @@ class OpenAIStyleClient implements LLMClient {
       body: JSON.stringify({
         model: params.model ?? env.LLM_MODEL,
         messages: [
-          { role: 'system', content: params.system },
-          { role: 'developer', content: params.developer },
+          { role: 'system', content: combinedSystemPrompt },
           { role: 'user', content: params.user }
         ],
         temperature: 0.2,
       })
     });
-    if (!response.ok) throw new Error('LLM request failed');
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`LLM request failed (${response.status}): ${body.slice(0, 200)}`);
+    }
     const json = await response.json();
     return json.choices?.[0]?.message?.content ?? '{}';
   }
