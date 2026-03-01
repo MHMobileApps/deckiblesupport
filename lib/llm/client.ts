@@ -19,6 +19,7 @@ class OpenAIStyleClient implements LLMClient {
           { role: 'system', content: combinedSystemPrompt },
           { role: 'user', content: params.user }
         ],
+        response_format: { type: 'json_object' },
         temperature: 0.2,
       })
     });

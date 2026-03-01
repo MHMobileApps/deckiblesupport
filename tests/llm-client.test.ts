@@ -28,6 +28,7 @@ describe('llm client', () => {
       { role: 'system', content: expect.stringContaining('Developer instructions:\ndev') },
       { role: 'user', content: 'user' },
     ]);
+    expect(body.response_format).toEqual({ type: 'json_object' });
   });
 
   it('surfaces status and body when llm request fails', async () => {

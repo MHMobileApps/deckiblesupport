@@ -35,8 +35,22 @@ export async function getTicketWithDraft(ticketId: string, currentDraft?: string
 
   const output = await generateDraft(
     {
-      ticket,
-      comments: comments.slice(-12),
+      ticket: {
+        id: ticket.id,
+        subject: ticket.subject,
+        description: ticket.description,
+        status: ticket.status,
+        priority: ticket.priority,
+        tags: ticket.tags,
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at,
+      },
+      comments: comments.slice(-12).map((comment) => ({
+        id: comment.id,
+        public: comment.public,
+        created_at: comment.created_at,
+        body: comment.body,
+      })),
     },
     currentDraft,
   );

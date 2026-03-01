@@ -18,6 +18,8 @@ You do NOT send messages. You only propose drafts for an agent to review.
 10) Do not use em dashes.`;
 
 const DEVELOPER_PROMPT = `You will be given a Zendesk ticket and subset of comments. Produce STRICT JSON only matching schema.
+Base the output on the provided ticket details and conversation text.
+Do not output placeholders or generic fallback phrases unless the ticket content is truly empty.
 Include summaryBullets, category, urgency, suggestedReply signed as \"Mark\", suggestedInternalNote in English, followUpQuestions if needed, redFlags for safety and compliance issues.`;
 
 export async function generateDraft(payload: Record<string, unknown>, currentDraft?: string): Promise<DraftOutput> {
@@ -33,7 +35,7 @@ Task: Output strict JSON only.`;
       user: redactForLlm(userPrompt),
     });
 
-    return await parseOrRepair(raw, client);
+    return await parseOrRepair(raw, client, userPrompt);
   } catch (error) {
     log('warn', 'LLM draft generation failed; using fallback', {
       message: error instanceof Error ? error.message : 'Unknown LLM error',
@@ -43,21 +45,37 @@ Task: Output strict JSON only.`;
 }
 
 
-async function parseOrRepair(raw: string, client: ReturnType<typeof getLlmClient>): Promise<DraftOutput> {
+async function parseOrRepair(raw: string, client: ReturnType<typeof getLlmClient>, originalInput: string): Promise<DraftOutput> {
+  const candidate = extractJsonObject(raw);
   try {
-    return draftSchema.parse(JSON.parse(raw));
+    return draftSchema.parse(JSON.parse(candidate));
   } catch {
     try {
       const repair = await client.generate({
         system: 'Return corrected JSON only',
-        developer: 'Fix invalid JSON to match schema',
-        user: raw,
+        developer: 'Fix invalid JSON to match schema exactly. Preserve details from the ticket content and avoid generic replies.',
+        user: `Original input:
+${originalInput}
+
+Model output to repair:
+${raw}`,
       });
-      return draftSchema.parse(JSON.parse(repair));
+      const repairedCandidate = extractJsonObject(repair);
+      return draftSchema.parse(JSON.parse(repairedCandidate));
     } catch {
       return fallbackDraft(raw, 'invalid JSON');
     }
   }
+}
+
+function extractJsonObject(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text;
 }
 
 function fallbackDraft(text: string, reason = 'unknown'): DraftOutput {
