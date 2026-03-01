@@ -3,6 +3,7 @@ import {
   authenticateZendeskCredentials,
   getZendeskAuthHeader,
   getZendeskAuthHeaderForUser,
+  getZendeskPasswordAuthHeaderForUser,
   isZendeskConfigured,
   normalizeZendeskSubdomain,
 } from '../lib/zendesk/client';
@@ -23,6 +24,13 @@ describe('zendesk client auth header', () => {
     const header = getZendeskAuthHeaderForUser('agent@deckible.com', 'api-token');
     const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8');
     expect(decoded).toBe('agent@deckible.com/token:api-token');
+  });
+
+
+  it('builds password auth header for a provided user', () => {
+    const header = getZendeskPasswordAuthHeaderForUser('agent@deckible.com', 'password123');
+    const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8');
+    expect(decoded).toBe('agent@deckible.com:password123');
   });
 
   it('normalizes zendesk subdomain values', () => {
@@ -54,10 +62,26 @@ describe('zendesk client auth header', () => {
     expect(user).toBeNull();
   });
 
-  it('returns null for invalid zendesk credentials', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })) as any);
+  it('falls back to password auth when token auth fails', async () => {
+    vi.stubGlobal('fetch', vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ user: { email: 'agent@deckible.com', name: 'Deckible Agent' } }),
+      }) as any);
 
-    const user = await authenticateZendeskCredentials('agent@deckible.com', 'wrong-token');
+    const user = await authenticateZendeskCredentials('agent@deckible.com', 'password123');
+    expect(user).toEqual({ email: 'agent@deckible.com', name: 'Deckible Agent' });
+  });
+
+  it('returns null when both token and password auth fail', async () => {
+    vi.stubGlobal('fetch', vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: false }) as any);
+
+    const user = await authenticateZendeskCredentials('agent@deckible.com', 'wrong-secret');
     expect(user).toBeNull();
   });
 });

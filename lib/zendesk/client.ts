@@ -63,20 +63,33 @@ export function getZendeskAuthHeaderForUser(email: string, apiToken: string) {
   return `Basic ${userBasic}`;
 }
 
-export async function authenticateZendeskCredentials(email: string, apiToken: string) {
-  if (!zendeskSubdomain || isPlaceholder(email) || isPlaceholder(apiToken)) {
+export function getZendeskPasswordAuthHeaderForUser(email: string, password: string) {
+  const userBasic = Buffer.from(`${email}:${password}`).toString('base64');
+  return `Basic ${userBasic}`;
+}
+
+async function fetchZendeskMe(authorization: string) {
+  return fetch(`${baseUrl}/api/v2/users/me.json`, {
+    headers: {
+      Authorization: authorization,
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+}
+
+export async function authenticateZendeskCredentials(email: string, secret: string) {
+  if (!zendeskSubdomain || isPlaceholder(email) || isPlaceholder(secret)) {
     return null;
   }
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/api/v2/users/me.json`, {
-      headers: {
-        Authorization: getZendeskAuthHeaderForUser(email, apiToken),
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    });
+    res = await fetchZendeskMe(getZendeskAuthHeaderForUser(email, secret));
+
+    if (!res.ok) {
+      res = await fetchZendeskMe(getZendeskPasswordAuthHeaderForUser(email, secret));
+    }
   } catch (error) {
     log('warn', 'Zendesk authentication request failed', {
       message: error instanceof Error ? error.message : 'Unknown fetch error',
